@@ -1,0 +1,42 @@
+name: CD on CI success
+
+on:
+  workflow_run:
+    workflows: ["Server-CI on Develop Merge"]
+    types:
+      - completed
+      
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Backend Dependencies
+        working-directory: server
+        run: |
+          npm install
+
+      - name: Create .env file
+        working-directory: server
+        run: |
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env.production
+          echo "SERVER_URI=${{ secrets.SERVER_URI }}" >> .env.production
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
+          echo "NODE_ENV=${{ secrets.NODE_ENV }}" >> .env.production
+          echo "PORT=${{ secrets.PORT }}" >> .env.production
+
+      - name: Start Backend Server (Optional)
+        working-directory: server
+        run: |
+          npm run start
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}

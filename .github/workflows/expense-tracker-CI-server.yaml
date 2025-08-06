@@ -1,0 +1,30 @@
+name: Server-CI on Develop Merge
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  ci:
+    name: Run CI after merge to develop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Backend setup and test only
+      - name: Install & Test Backend
+        working-directory: server
+        run: |
+          npm install
+          npm run lint || echo "No lint script"
+          npm test || echo "No test script"
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}

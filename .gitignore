@@ -32,3 +32,9 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# local env files
+.env
+.env.*
+*.env
+*.env.*
