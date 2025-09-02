@@ -5,6 +5,15 @@ const jwt = require("jsonwebtoken");
 const successResponseOnApiCall = require("../responses/success-response");
 const router = express.Router();
 const authMiddleware = require("../authorizationMiddleware");
+const nodemailer = require("nodemailer");
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "your@gmail.com",
+    pass: "app-password", // from Gmail App Passwords
+  },
+});
 
 router.get("/", async (req, res) => {
   try {
@@ -54,6 +63,22 @@ router.post("/", async (req, res) => {
       req.body.user_email = req.body.user_email.toLowerCase();
     }
     const newUserDetails = new userDetails(req.body);
+    const existingUser = await userDetails.findOne({
+      $or: [
+        { user_email: req.body.user_email },
+        { user_number: req.body.user_number },
+      ],
+    });
+
+    if (existingUser) {
+      if (existingUser.user_email === req.body.user_email) {
+        return res.status(400).json({ error: "Email already exists" });
+      }
+      if (existingUser.user_number === req.body.user_number) {
+        return res.status(400).json({ error: "Number already exists" });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(newUserDetails.user_password, 10);
     newUserDetails.user_password = hashedPassword;
     const saved = await newUserDetails.save();
@@ -62,11 +87,7 @@ router.post("/", async (req, res) => {
     const errorMessage = err?.errorResponse && err?.errorResponse?.errmsg;
     res.status(500).json({
       message: "Error saving transaction",
-      error: err.errorResponse.errmsg.includes("user_email_1 dup key")
-        ? "Email already exists"
-        : errorMessage.includes("user_number_1 dup key")
-        ? "Number already registered"
-        : err.message,
+      error: err.errorResponse.errmsg,
     });
   }
 });
@@ -123,4 +144,57 @@ router.put("/updateProfile/:id", authMiddleware, async (req, res) => {
   }
 });
 
+router.put("/updatePassword", async (req, res) => {
+  try {
+    const { user_email, user_number, user_password } = req.body;
+
+    if (!user_email && !user_number) {
+      return res.status(400).json({ error: "Email or phone number required" });
+    }
+
+    const existingUser = await userDetails.findOne({
+      $or: [{ user_email: user_email?.toLowerCase() }, { user_number }],
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(user_password, 10);
+
+    existingUser.user_password = hashedPassword;
+    await existingUser.save();
+
+    return res.status(200).json({ message: "Password updated successfully" });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ error: "Error updating password", details: err.message });
+  }
+});
+
+router.post("/sendOtp", async (req, res) => {
+  const { user_email, otp } = req.body;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail", // or use smtp.gmail.com below
+      auth: {
+        user: process.env.EMAIL_USER, // your Gmail
+        pass: process.env.EMAIL_PASS, // paste app password (no spaces)
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user_email,
+      subject: "Your OTP Code",
+      text: `Your OTP is ${otp}. It expires in 5 minutes!`,
+    };
+    let info = await transporter.sendMail(mailOptions);
+    res.status(200).json({ message: "OTP sent successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 module.exports = router;
